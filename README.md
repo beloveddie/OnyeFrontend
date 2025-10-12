@@ -70,6 +70,96 @@ npm run build
 npm start
 ```
 
+## 🐳 Docker Deployment
+
+This project includes Docker support for both development and production environments.
+
+### Development Mode (Default)
+
+Run the development server with hot-reload and live code changes:
+
+1. **Build and run the container**
+   ```bash
+   docker-compose up --build
+   ```
+
+2. **Run in detached mode (background)**
+   ```bash
+   docker-compose up -d --build
+   ```
+
+3. **Stop the container**
+   ```bash
+   docker-compose down
+   ```
+
+4. **View logs**
+   ```bash
+   docker-compose logs -f frontend
+   ```
+
+The development mode includes:
+- Hot-reload functionality with live code changes
+- Volume mounting for instant updates without rebuilding
+- Full Next.js development features
+- Access to development tools and error overlays
+
+### Production Mode
+
+Run the optimized production build:
+
+1. **Build and run the production container**
+   ```bash
+   docker-compose -f docker-compose.prod.yml up --build
+   ```
+
+2. **Run in detached mode**
+   ```bash
+   docker-compose -f docker-compose.prod.yml up -d --build
+   ```
+
+3. **Stop the production container**
+   ```bash
+   docker-compose -f docker-compose.prod.yml down
+   ```
+
+### Using Docker directly
+
+**Development:**
+```bash
+docker build --target development -t onye-frontend-dev .
+docker run -p 3000:3000 -v $(pwd):/app -v /app/node_modules onye-frontend-dev
+```
+
+**Production:**
+```bash
+docker build --target production -t onye-frontend-prod .
+docker run -p 3000:3000 onye-frontend-prod
+```
+
+### Docker Configuration
+
+The project includes:
+- **Dockerfile** - Multi-stage build with separate development and production stages
+  - `development` stage: Runs Next.js dev server with hot-reload
+  - `production` stage: Optimized build with minimal image size
+  - Uses Node.js 18 Alpine for minimal size
+  - Implements security best practices with non-root user (production)
+  - Leverages Next.js standalone output for reduced image size
+- **docker-compose.yml** - Development orchestration (default)
+  - Targets development stage
+  - Volume mounting for live code changes
+  - Development environment variables
+- **docker-compose.prod.yml** - Production orchestration
+  - Targets production stage
+  - No volume mounting for security
+  - Production environment variables
+  - Restart policy for high availability
+
+### Accessing the Application
+
+Once running, access the application at [http://localhost:3000](http://localhost:3000)
+
 ## 📁 Project Structure
 
 ```
@@ -84,8 +174,11 @@ frontend/
 ├── public/
 │   ├── onye_logo.svg         # Onye brand logo
 │   └── ...
+├── Dockerfile                # Multi-stage Docker configuration
+├── docker-compose.yml        # Docker Compose for development
+├── docker-compose.prod.yml   # Docker Compose for production
 ├── package.json              # Dependencies and scripts
-├── next.config.ts            # Next.js configuration
+├── next.config.ts            # Next.js configuration (with standalone output)
 ├── tsconfig.json             # TypeScript configuration
 └── tailwind.config.ts        # Tailwind CSS configuration
 ```
@@ -113,6 +206,11 @@ frontend/
 - **ESLint** - Code linting
 - **PostCSS** - CSS processing
 - **Turbopack** - Fast bundler for development
+
+### Deployment
+- **Docker** - Containerization for consistent deployments
+- **Docker Compose** - Multi-container orchestration
+- **Standalone Output** - Optimized Next.js build for production
 
 ## 📊 FHIR Data Types
 
