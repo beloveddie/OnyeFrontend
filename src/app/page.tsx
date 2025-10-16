@@ -3,238 +3,79 @@
 import { useState } from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-interface FHIRPatient {
-  id: string;
-  name: string;
-  gender: string;
-  birthDate: string;
-  age: number;
-  address?: string;
-  phone?: string;
+// API Response Types
+interface APIResponse {
+  query: string;
+  generated_code: string;
+  result: any[];
+  data: {
+    type: string | null;
+    value: any;
+    count: number | null;
+    table: {
+      columns: string[];
+      rows: any[];
+      total: number;
+    } | null;
+    chart: {
+      labels: string[];
+      datasets: {
+        label: string;
+        data: number[];
+      }[];
+    } | null;
+    cards: {
+      label: string;
+      value?: any;
+      data?: any;
+    }[] | null;
+  };
+  natural_language_response: string;
+  execution_time: number;
 }
-
-interface FHIRObservation {
-  id: string;
-  patientId: string;
-  type: string;
-  value: string;
-  unit?: string;
-  date: string;
-  status: string;
-}
-
-interface FHIRCondition {
-  id: string;
-  patientId: string;
-  code: string;
-  description: string;
-  severity: string;
-  onsetDate: string;
-}
-
-type FHIRResult = FHIRPatient | FHIRObservation | FHIRCondition;
 
 export default function Home() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<FHIRResult[]>([]);
+  const [apiResponse, setApiResponse] = useState<APIResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [resultType, setResultType] = useState<string>("");
-  const [filteredResults, setFilteredResults] = useState<FHIRResult[]>([]);
+  const [error, setError] = useState<string>("");
   
-  // Filter states
-  const [ageFilter, setAgeFilter] = useState<string>("");
-  const [genderFilter, setGenderFilter] = useState<string>("");
-  const [severityFilter, setSeverityFilter] = useState<string>("");
-  const [codeFilter, setCodeFilter] = useState<string>("");
+  // API endpoint - change this to your backend URL
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-  // Simulated FHIR data
-  const simulateFHIRQuery = (searchQuery: string): { type: string; data: FHIRResult[] } => {
-    const lowerQuery = searchQuery.toLowerCase();
-
-    // Patient queries
-    if (lowerQuery.includes("patient") || lowerQuery.includes("find") || lowerQuery.includes("who")) {
-      return {
-        type: "patients",
-        data: [
-          {
-            id: "PT001",
-            name: "John Smith",
-            gender: "Male",
-            birthDate: "1985-03-15",
-            age: 39,
-            address: "123 Main St, Boston, MA",
-            phone: "(555) 123-4567",
-          },
-          {
-            id: "PT002",
-            name: "Emily Johnson",
-            gender: "Female",
-            birthDate: "1990-07-22",
-            age: 34,
-            address: "456 Oak Ave, Cambridge, MA",
-            phone: "(555) 234-5678",
-          },
-          {
-            id: "PT003",
-            name: "Michael Davis",
-            gender: "Male",
-            birthDate: "1978-11-08",
-            age: 46,
-            address: "789 Pine Rd, Somerville, MA",
-            phone: "(555) 345-6789",
-          },
-        ] as FHIRPatient[],
-      };
-    }
-
-    // Observation/vital queries
-    if (lowerQuery.includes("blood pressure") || lowerQuery.includes("observation") || lowerQuery.includes("vital")) {
-      return {
-        type: "observations",
-        data: [
-          {
-            id: "OBS001",
-            patientId: "PT001",
-            type: "Blood Pressure",
-            value: "120/80",
-            unit: "mmHg",
-            date: "2024-10-10",
-            status: "final",
-          },
-          {
-            id: "OBS002",
-            patientId: "PT002",
-            type: "Heart Rate",
-            value: "72",
-            unit: "bpm",
-            date: "2024-10-09",
-            status: "final",
-          },
-          {
-            id: "OBS003",
-            patientId: "PT001",
-            type: "Temperature",
-            value: "98.6",
-            unit: "°F",
-            date: "2024-10-10",
-            status: "final",
-          },
-        ] as FHIRObservation[],
-      };
-    }
-
-    // Condition/diagnosis queries
-    if (lowerQuery.includes("condition") || lowerQuery.includes("diagnosis") || lowerQuery.includes("disease")) {
-      return {
-        type: "conditions",
-        data: [
-          {
-            id: "COND001",
-            patientId: "PT001",
-            code: "E11",
-            description: "Type 2 Diabetes Mellitus",
-            severity: "Moderate",
-            onsetDate: "2020-05-12",
-          },
-          {
-            id: "COND002",
-            patientId: "PT002",
-            code: "I10",
-            description: "Essential Hypertension",
-            severity: "Mild",
-            onsetDate: "2022-03-08",
-          },
-          {
-            id: "COND003",
-            patientId: "PT003",
-            code: "J45.0",
-            description: "Asthma",
-            severity: "Severe",
-            onsetDate: "2015-09-20",
-          },
-        ] as FHIRCondition[],
-      };
-    }
-
-    // Default: return patients
-    return {
-      type: "patients",
-      data: [
-        {
-          id: "PT001",
-          name: "John Smith",
-          gender: "Male",
-          birthDate: "1985-03-15",
-          age: 39,
-          address: "123 Main St, Boston, MA",
-          phone: "(555) 123-4567",
-        },
-      ] as FHIRPatient[],
-    };
-  };
-
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!query.trim()) return;
 
     setLoading(true);
-    // Simulate API delay
-    setTimeout(() => {
-      const { type, data } = simulateFHIRQuery(query);
-      setResults(data);
-      setFilteredResults(data);
-      setResultType(type);
+    setError("");
+    
+    try {
+      const response = await fetch(`${API_URL}/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: query }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to fetch data');
+      }
+
+      const data: APIResponse = await response.json();
+      setApiResponse(data);
+      setError("");
+    } catch (err) {
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        setError('Cannot connect to the backend API. Please ensure:\n1. The backend is running at ' + API_URL + '\n2. CORS is properly configured on the backend');
+      } else {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      }
+      setApiResponse(null);
+    } finally {
       setLoading(false);
-      // Reset filters
-      setAgeFilter("");
-      setGenderFilter("");
-      setSeverityFilter("");
-      setCodeFilter("");
-    }, 800);
-  };
-
-  // Apply filters
-  const applyFilters = () => {
-    let filtered = [...results];
-
-    if (resultType === "patients") {
-      const patients = filtered as FHIRPatient[];
-      let filteredPatients = patients;
-
-      if (ageFilter) {
-        const [min, max] = ageFilter.split("-").map(Number);
-        filteredPatients = filteredPatients.filter(p => 
-          max ? (p.age >= min && p.age <= max) : p.age >= min
-        );
-      }
-
-      if (genderFilter) {
-        filteredPatients = filteredPatients.filter(p => p.gender === genderFilter);
-      }
-
-      setFilteredResults(filteredPatients);
-    } else if (resultType === "conditions") {
-      const conditions = filtered as FHIRCondition[];
-      let filteredConditions = conditions;
-
-      if (codeFilter) {
-        filteredConditions = filteredConditions.filter(c => 
-          c.code.toLowerCase().includes(codeFilter.toLowerCase())
-        );
-      }
-
-      if (severityFilter) {
-        filteredConditions = filteredConditions.filter(c => c.severity === severityFilter);
-      }
-
-      setFilteredResults(filteredConditions);
-    } else {
-      setFilteredResults(filtered);
     }
-  };
-
-  // Apply filters whenever filter values change
-  const handleFilterChange = () => {
-    applyFilters();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -243,244 +84,101 @@ export default function Home() {
     }
   };
 
-  const renderPatient = (patient: FHIRPatient) => (
-    <div key={patient.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <h3 className="text-xl font-semibold text-gray-900">{patient.name}</h3>
-        <span className="px-3 py-1 text-xs font-medium rounded-full bg-teal-100 text-teal-700">
-          Patient
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <p className="text-gray-500 text-xs">Patient ID</p>
-          <p className="font-medium text-gray-900 mt-1">{patient.id}</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Gender</p>
-          <p className="font-medium text-gray-900 mt-1">{patient.gender}</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Age</p>
-          <p className="font-medium text-gray-900 mt-1">{patient.age} years</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Birth Date</p>
-          <p className="font-medium text-gray-900 mt-1">{patient.birthDate}</p>
-        </div>
-        {patient.address && (
-          <div className="col-span-2">
-            <p className="text-gray-500 text-xs">Address</p>
-            <p className="font-medium text-gray-900 mt-1">{patient.address}</p>
+  // Render data cards from API response
+  const renderDataCards = () => {
+    if (!apiResponse?.data?.cards || apiResponse.data.cards.length === 0) return null;
+
+    return (
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {apiResponse.data.cards.map((card, idx) => (
+          <div key={idx} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">{card.label}</h3>
+              {card.value !== undefined && (
+                <span className="px-3 py-1 text-xs font-medium rounded-full bg-teal-100 text-teal-700">
+                  {typeof card.value === 'number' ? card.value : 'Data'}
+                </span>
+              )}
+            </div>
+            {card.data && (
+              <div className="space-y-2">
+                {Object.entries(card.data).map(([key, value]) => (
+                  <div key={key} className="flex justify-between text-sm">
+                    <span className="text-gray-500 capitalize">{key}:</span>
+                    <span className="font-medium text-gray-900">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!card.data && card.value !== undefined && typeof card.value !== 'number' && (
+              <p className="text-gray-700 text-sm">{String(card.value)}</p>
+            )}
           </div>
-        )}
-        {patient.phone && (
-          <div>
-            <p className="text-gray-500 text-xs">Phone</p>
-            <p className="font-medium text-gray-900 mt-1">{patient.phone}</p>
-          </div>
-        )}
+        ))}
       </div>
-    </div>
-  );
-
-  const renderObservation = (obs: FHIRObservation) => (
-    <div key={obs.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <h3 className="text-xl font-semibold text-gray-900">{obs.type}</h3>
-        <span className="px-3 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">
-          Observation
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <p className="text-gray-500 text-xs">Observation ID</p>
-          <p className="font-medium text-gray-900 mt-1">{obs.id}</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Patient ID</p>
-          <p className="font-medium text-gray-900 mt-1">{obs.patientId}</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Value</p>
-          <p className="font-medium text-gray-900 mt-1 text-lg">
-            {obs.value} {obs.unit}
-          </p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Date</p>
-          <p className="font-medium text-gray-900 mt-1">{obs.date}</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Status</p>
-          <p className="font-medium text-gray-900 mt-1 capitalize">{obs.status}</p>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderCondition = (cond: FHIRCondition) => (
-    <div key={cond.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <h3 className="text-xl font-semibold text-gray-900">{cond.description}</h3>
-        <span className="px-3 py-1 text-xs font-medium rounded-full bg-rose-100 text-rose-700">
-          Condition
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <p className="text-gray-500 text-xs">Condition ID</p>
-          <p className="font-medium text-gray-900 mt-1">{cond.id}</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Patient ID</p>
-          <p className="font-medium text-gray-900 mt-1">{cond.patientId}</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Code</p>
-          <p className="font-medium text-gray-900 mt-1">{cond.code}</p>
-        </div>
-        <div>
-          <p className="text-gray-500 text-xs">Severity</p>
-          <p className="font-medium text-gray-900 mt-1">{cond.severity}</p>
-        </div>
-        <div className="col-span-2">
-          <p className="text-gray-500 text-xs">Onset Date</p>
-          <p className="font-medium text-gray-900 mt-1">{cond.onsetDate}</p>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderResult = (result: FHIRResult) => {
-    if ("birthDate" in result) {
-      return renderPatient(result as FHIRPatient);
-    } else if ("value" in result) {
-      return renderObservation(result as FHIRObservation);
-    } else {
-      return renderCondition(result as FHIRCondition);
-    }
+    );
   };
 
-  // Prepare data for charts
-  const prepareChartData = () => {
-    const dataToUse = filteredResults.length > 0 ? filteredResults : results;
-    
-    if (resultType === "patients") {
-      const patients = dataToUse as FHIRPatient[];
-      // Age distribution
-      const ageGroups = patients.reduce((acc: any, p) => {
-        const group = p.age < 30 ? "20-29" : p.age < 40 ? "30-39" : p.age < 50 ? "40-49" : "50+";
-        acc[group] = (acc[group] || 0) + 1;
-        return acc;
-      }, {});
-      return Object.entries(ageGroups).map(([name, value]) => ({ name, value }));
-    } else if (resultType === "observations") {
-      const obs = dataToUse as FHIRObservation[];
-      return obs.map(o => ({ name: o.type, value: parseFloat(o.value.split('/')[0] || o.value) }));
-    } else if (resultType === "conditions") {
-      const conds = dataToUse as FHIRCondition[];
-      const severityCount = conds.reduce((acc: any, c) => {
-        acc[c.severity] = (acc[c.severity] || 0) + 1;
-        return acc;
-      }, {});
-      return Object.entries(severityCount).map(([name, value]) => ({ name, value }));
+  // Render table from API response
+  const renderTable = () => {
+    if (!apiResponse?.data?.table) return null;
+
+    const { columns, rows } = apiResponse.data.table;
+
+    if (rows.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          No data available
+        </div>
+      );
     }
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white rounded-lg overflow-hidden">
+          <thead className="bg-teal-600 text-white">
+            <tr>
+              {columns.map((col) => (
+                <th key={col} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {rows.map((row, idx) => (
+              <tr key={idx} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                {columns.map((col) => (
+                  <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {String(row[col] ?? '')}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Prepare chart data from API response
+  const prepareChartData = () => {
+    if (!apiResponse?.data?.chart) return [];
+
+    const { labels, datasets } = apiResponse.data.chart;
+    
+    // For bar chart - use first dataset
+    if (datasets.length > 0) {
+      return labels.map((label, idx) => ({
+        name: label,
+        value: datasets[0].data[idx] || 0
+      }));
+    }
+
     return [];
   };
 
   const COLORS = ['#14B8A6', '#06B6D4', '#3B82F6', '#8B5CF6', '#EC4899'];
-
-  const renderTable = () => {
-    const dataToUse = filteredResults.length > 0 ? filteredResults : results;
-    
-    if (resultType === "patients") {
-      const patients = dataToUse as FHIRPatient[];
-      return (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white rounded-lg overflow-hidden">
-            <thead className="bg-teal-600 text-white">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Patient ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Age</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Gender</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Birth Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {patients.map((patient, idx) => (
-                <tr key={patient.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{patient.id}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{patient.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{patient.age}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{patient.gender}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{patient.birthDate}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    } else if (resultType === "observations") {
-      const obs = dataToUse as FHIRObservation[];
-      return (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white rounded-lg overflow-hidden">
-            <thead className="bg-emerald-600 text-white">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Observation ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Value</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {obs.map((observation, idx) => (
-                <tr key={observation.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{observation.id}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{observation.type}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{observation.value} {observation.unit}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{observation.date}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">{observation.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    } else if (resultType === "conditions") {
-      const conds = dataToUse as FHIRCondition[];
-      return (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white rounded-lg overflow-hidden">
-            <thead className="bg-rose-600 text-white">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Condition ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Description</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Code</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Severity</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Onset Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {conds.map((condition, idx) => (
-                <tr key={condition.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{condition.id}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{condition.description}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{condition.code}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{condition.severity}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{condition.onsetDate}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50">
@@ -547,233 +245,173 @@ export default function Home() {
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="text-sm text-gray-500">Quick queries:</span>
                 <button
-                  onClick={() => {
-                    setQuery("Find all patients");
-                    setTimeout(() => {
-                      const { type, data } = simulateFHIRQuery("Find all patients");
-                      setResults(data);
-                      setResultType(type);
-                    }, 100);
-                  }}
+                  onClick={() => setQuery("How many patients do we have?")}
                   className="text-sm px-4 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-full transition-colors font-medium cursor-pointer"
                 >
-                  Find all patients
+                  All patients
                 </button>
                 <button
-                  onClick={() => {
-                    setQuery("Show blood pressure observations");
-                    setTimeout(() => {
-                      const { type, data } = simulateFHIRQuery("Show blood pressure observations");
-                      setResults(data);
-                      setResultType(type);
-                    }, 100);
-                  }}
+                  onClick={() => setQuery("Show me all female patients")}
                   className="text-sm px-4 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-full transition-colors font-medium cursor-pointer"
                 >
-                  Blood pressure
+                  Female patients
                 </button>
                 <button
-                  onClick={() => {
-                    setQuery("List all conditions");
-                    setTimeout(() => {
-                      const { type, data } = simulateFHIRQuery("List all conditions");
-                      setResults(data);
-                      setResultType(type);
-                    }, 100);
-                  }}
+                  onClick={() => setQuery("What are the most common conditions?")}
                   className="text-sm px-4 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-full transition-colors font-medium cursor-pointer"
                 >
-                  Conditions
+                  Common conditions
+                </button>
+                <button
+                  onClick={() => setQuery("Show patients with diabetes")}
+                  className="text-sm px-4 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-full transition-colors font-medium cursor-pointer"
+                >
+                  Diabetes patients
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Results */}
-          {results.length > 0 && (
-            <div className="max-w-6xl mx-auto mt-12">
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-2xl font-semibold text-gray-900">
-                  Results ({filteredResults.length > 0 ? filteredResults.length : results.length})
-                </h2>
-                <span className="text-sm text-gray-600 capitalize px-4 py-2 bg-white rounded-full">
-                  {resultType}
-                </span>
-              </div>
-
-              {/* Filters Section */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6">
-                <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
-                  <svg className="w-6 h-6 mr-2 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          {/* Error Message */}
+          {error && (
+            <div className="max-w-4xl mx-auto mt-8">
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+                <div className="flex items-start">
+                  <svg className="w-6 h-6 text-red-600 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Filters
-                </h3>
-                
-                {resultType === "patients" && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">Age Range</label>
-                      <select
-                        value={ageFilter}
-                        onChange={(e) => {
-                          setAgeFilter(e.target.value);
-                          setTimeout(() => applyFilters(), 100);
-                        }}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer text-gray-900 font-medium bg-white"
-                      >
-                        <option value="">All Ages</option>
-                        <option value="0-29">0-29 years</option>
-                        <option value="30-39">30-39 years</option>
-                        <option value="40-49">40-49 years</option>
-                        <option value="50-100">50+ years</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">Gender</label>
-                      <select
-                        value={genderFilter}
-                        onChange={(e) => {
-                          setGenderFilter(e.target.value);
-                          setTimeout(() => applyFilters(), 100);
-                        }}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer text-gray-900 font-medium bg-white"
-                      >
-                        <option value="">All Genders</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                      </select>
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        onClick={() => {
-                          setAgeFilter("");
-                          setGenderFilter("");
-                          setFilteredResults(results);
-                        }}
-                        className="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold rounded-lg transition-colors cursor-pointer"
-                      >
-                        Clear Filters
-                      </button>
-                    </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-red-900 mb-1">Error</h3>
+                    <p className="text-red-700 whitespace-pre-line">{error}</p>
+                    {!error.includes('CORS') && (
+                      <p className="text-sm text-red-600 mt-2">
+                        Make sure your backend API is running at {API_URL}
+                      </p>
+                    )}
                   </div>
-                )}
-
-                {resultType === "conditions" && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">Diagnosis Code</label>
-                      <input
-                        type="text"
-                        value={codeFilter}
-                        onChange={(e) => {
-                          setCodeFilter(e.target.value);
-                          setTimeout(() => applyFilters(), 100);
-                        }}
-                        placeholder="e.g., E11, I10"
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-gray-900 font-medium placeholder-gray-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">Severity</label>
-                      <select
-                        value={severityFilter}
-                        onChange={(e) => {
-                          setSeverityFilter(e.target.value);
-                          setTimeout(() => applyFilters(), 100);
-                        }}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer text-gray-900 font-medium bg-white"
-                      >
-                        <option value="">All Severities</option>
-                        <option value="Mild">Mild</option>
-                        <option value="Moderate">Moderate</option>
-                        <option value="Severe">Severe</option>
-                      </select>
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        onClick={() => {
-                          setCodeFilter("");
-                          setSeverityFilter("");
-                          setFilteredResults(results);
-                        }}
-                        className="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold rounded-lg transition-colors cursor-pointer"
-                      >
-                        Clear Filters
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {resultType === "observations" && (
-                  <p className="text-gray-700 text-base font-medium">No filters available for observations.</p>
-                )}
-              </div>
-
-              {/* Visualizations */}
-              <div className="grid gap-6 md:grid-cols-2 mb-8">
-                {/* Bar Chart */}
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    {resultType === "patients" ? "Age Distribution" : resultType === "observations" ? "Observation Values" : "Severity Distribution"}
-                  </h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={prepareChartData()}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="value" fill="#14B8A6" />
-                    </BarChart>
-                  </ResponsiveContainer>
                 </div>
-
-                {/* Pie Chart */}
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    {resultType === "patients" ? "Age Groups" : resultType === "observations" ? "Observation Types" : "Severity Levels"}
-                  </h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={prepareChartData()}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name}: ${(percent as number * 100).toFixed(0)}%`}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {prepareChartData().map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Data Table */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Table</h3>
-                {renderTable()}
-              </div>
-
-              {/* Card Grid */}
-              <div className="grid gap-6 md:grid-cols-2">
-                {(filteredResults.length > 0 ? filteredResults : results).map((result) => renderResult(result))}
               </div>
             </div>
           )}
 
+          {/* Results */}
+          {apiResponse && (
+            <div className="max-w-6xl mx-auto mt-12">
+              {/* Natural Language Response */}
+              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 rounded-2xl p-6 shadow-sm border border-teal-100 mb-6">
+                <div className="flex items-start">
+                  <svg className="w-6 h-6 text-teal-600 mr-3 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Answer</h3>
+                    <p className="text-gray-700 text-base leading-relaxed">{apiResponse.natural_language_response}</p>
+                    <div className="mt-4 flex items-center gap-4 text-sm text-gray-600">
+                      <span className="flex items-center">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {apiResponse.execution_time.toFixed(2)}s
+                      </span>
+                      <span className="flex items-center">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        {apiResponse.data.count || 0} records
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Generated Code (Collapsible) */}
+              <details className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-200 mb-6">
+                <summary className="cursor-pointer font-semibold text-gray-900 flex items-center">
+                  <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  View Generated Code
+                </summary>
+                <pre className="mt-4 p-4 bg-gray-900 text-green-400 rounded-lg overflow-x-auto text-sm">
+                  <code>{apiResponse.generated_code}</code>
+                </pre>
+              </details>
+
+              {/* Visualizations */}
+              {apiResponse.data.chart && prepareChartData().length > 0 && (
+                <div className="grid gap-6 md:grid-cols-2 mb-8">
+                  {/* Bar Chart */}
+                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Bar Chart</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={prepareChartData()}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} fontSize={12} />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="value" fill="#14B8A6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Pie Chart */}
+                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Distribution</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={prepareChartData()}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name}: ${(percent as number * 100).toFixed(0)}%`}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {prepareChartData().map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Data Table */}
+              {apiResponse.data.table && apiResponse.data.table.rows.length > 0 && (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-8">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    Data Table ({apiResponse.data.table.total} records)
+                  </h3>
+                  {renderTable()}
+                </div>
+              )}
+
+              {/* Data Cards */}
+              {apiResponse.data.cards && apiResponse.data.cards.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Details</h3>
+                  {renderDataCards()}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Empty State */}
-          {!loading && results.length === 0 && query && (
+          {!loading && !apiResponse && !error && (
             <div className="max-w-4xl mx-auto mt-12 text-center py-12 bg-white/60 backdrop-blur-sm rounded-3xl">
+              <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
               <p className="text-gray-600 text-lg">
-                No results found. Try a different query.
+                Enter a query to get started
+              </p>
+              <p className="text-gray-500 text-sm mt-2">
+                Ask questions about patients, conditions, medications, and observations
               </p>
             </div>
           )}
